@@ -1,0 +1,173 @@
+import os
+import cv2
+import json
+import torch
+import torch.nn as nn
+import numpy as np
+from skimage import color
+
+
+# ======================================
+# PNet (Makeup Distill Network) per PSGAN
+# ======================================
+class PNet(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.pnet_in = nn.Sequential(
+            nn.Conv2d(3, 64, kernel_size=7, stride=1, padding=3, bias=False),
+            nn.InstanceNorm2d(64, affine=True),
+            nn.ReLU(inplace=True)
+        )
+        curr_dim = 64
+        for i in range(2):
+            layers = nn.Sequential(
+                nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1, bias=False),
+                nn.InstanceNorm2d(curr_dim * 2, affine=True),
+                nn.ReLU(inplace=True)
+            )
+            setattr(self, f"pnet_down_{i+1}", layers)
+            curr_dim *= 2
+
+        # Produce gamma/beta matrices (spatial-aware makeup style)
+        self.conv_gamma = nn.Conv2d(curr_dim, 1, kernel_size=1)
+        self.conv_beta  = nn.Conv2d(curr_dim, 1, kernel_size=1)
+
+    def forward(self, x):
+        feat = self.pnet_in(x)
+        feat = self.pnet_down_1(feat)
+        feat = self.pnet_down_2(feat)
+        gamma = self.conv_gamma(feat)
+        beta  = self.conv_beta(feat)
+        pooled = torch.mean(feat, dim=[2, 3])   # global average pooling
+        return gamma, beta, pooled
+
+
+# ======================================
+# Color Feature Extraction (ignore black bg)
+# ======================================
+def extract_color_features(img):
+    """Compute Lab color mean/std + histograms ignoring black background."""
+    img_lab = color.rgb2lab(img)
+    mask = np.any(img > 10, axis=-1)  # ignore black pixels
+    if mask.sum() == 0:
+        return None
+
+    region_lab = img_lab[mask]
+    mean = np.mean(region_lab, axis=0)
+    std = np.std(region_lab, axis=0)
+
+    hist = {}
+    for i, c in enumerate(["L", "A", "B"]):
+        bins = 32
+        if c == "L":
+            h, _ = np.histogram(region_lab[:, i], bins=bins, range=(0, 100))
+        else:
+            h, _ = np.histogram(region_lab[:, i], bins=bins, range=(-128, 127))
+        h = h / np.sum(h)
+        hist[c] = h.tolist()
+
+    return {"mean": mean.tolist(), "std": std.tolist(), "hist": hist}
+
+
+# ======================================
+# Region Processing Function
+# ======================================
+def process_image(image_path, region_name, label, model, device):
+    """Extract color + deep features from one image region."""
+    img_id = os.path.splitext(os.path.basename(image_path))[0]
+    img = cv2.imread(image_path)
+    if img is None:
+        return None
+
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    color_feats = extract_color_features(img)
+    if color_feats is None:
+        return None
+
+    # Prepare tensor
+    img_t = torch.from_numpy(img.transpose(2, 0, 1)).float().unsqueeze(0) / 255.0
+    img_t = img_t.to(device)
+
+    with torch.no_grad():
+        gamma, beta, pooled = model(img_t)
+    gamma = gamma.squeeze().cpu().numpy()   # shape (H/4, W/4)
+    beta  = beta.squeeze().cpu().numpy()
+    pooled_feat = pooled.squeeze().cpu().numpy()
+
+    # Black background mask
+    mask = np.any(img > 10, axis=-1)        # [H, W]
+    # Resize mask to match gamma/beta resolution
+    mask_small = cv2.resize(mask.astype(np.float32), (gamma.shape[1], gamma.shape[0]))
+
+    gamma *= mask_small
+    beta  *= mask_small
+
+    record = {
+        "class": label,                # 'makeup' or 'non_makeup'
+        "region": region_name,
+        "image_id": img_id,
+        "color": color_feats,
+        "deep": {
+            "gamma_pooled": float(np.mean(gamma[mask_small > 0])),
+            "beta_pooled":  float(np.mean(beta[mask_small > 0])),
+            "feat_pooled":  pooled_feat.tolist()
+        },
+        "meta": {
+            "area": int(mask.sum()),
+            "mask_ratio": float(mask.sum() / mask.size)
+        }
+    }
+    return record
+
+
+# ======================================
+# Dataset Builder
+# ======================================
+def build_dataset(base_dir, save_dir, device='cuda'):
+    """
+    base_dir should contain:
+        parsed_makeup/
+        parsed_non_makeup/
+    """
+    os.makedirs(save_dir, exist_ok=True)
+    model = PNet().to(device)
+    model.eval()
+
+    makeup_root = os.path.join(base_dir, "parsed_makeup")
+    nonmakeup_root = os.path.join(base_dir, "parsed_non_makeup")
+
+    # region folders (cheeks, face, lips, etc.)
+    region_types = [r for r in os.listdir(makeup_root) if os.path.isdir(os.path.join(makeup_root, r))]
+
+    for region in sorted(region_types):
+        all_records = []
+        for label, folder in [("makeup", makeup_root), ("non_makeup", nonmakeup_root)]:
+            region_folder = os.path.join(folder, region)
+            if not os.path.isdir(region_folder):
+                continue
+
+            print(f"🔹 Processing {label}/{region} ...")
+            img_files = [f for f in os.listdir(region_folder) if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+
+            for img_file in sorted(img_files):
+                img_path = os.path.join(region_folder, img_file)
+                rec = process_image(img_path, region, label, model, device)
+                if rec:
+                    all_records.append(rec)
+
+        # Save one file per region
+        save_path = os.path.join(save_dir, f"{region}.json")
+        with open(save_path, "w") as f:
+            json.dump(all_records, f, indent=2)
+
+        print(f"✅ Saved {len(all_records)} records → {save_path}")
+
+
+# ======================================
+# Run Example
+# ======================================
+if __name__ == "__main__":
+    base_dir = "/home/DSE411/Documents/mlg/project/makeup_dataset/parsing"
+    save_dir = "/home/DSE411/Documents/mlg/project/makeup_dataset/node_embed"
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    build_dataset(base_dir, save_dir, device)
