@@ -1,0 +1,12 @@
+torch
+torchvision
+torchaudio
+torch-geometric
+numpy
+opencv-python
+mediapipe
+matplotlib
+tqdm
+scipy
+scikit-image
+pathlib
