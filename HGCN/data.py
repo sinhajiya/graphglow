@@ -27,18 +27,19 @@ class MakeupDataset:
         assert self.split in ["train", "test"], "split must be 'train' or 'test'"
 
         # Load CSVs
-        self.makeup_df = pd.read_csv(makeup_csv)
-        self.non_df    = pd.read_csv(non_csv)
+        # self.makeup_df = pd.read_csv(makeup_csv)
+        # self.non_df    = pd.read_csv(non_csv)
+        self.makeup_df = pd.read_csv(makeup_csv, header=None, sep=",")
+        self.non_df    = pd.read_csv(non_csv, header=None, sep=",")
 
         # Filter by split
-        self.makeup_df = self.makeup_df[self.makeup_df['label'] == self.split]
-        self.non_df    = self.non_df[self.non_df['label'] == self.split]
+        self.makeup_df = self.makeup_df[self.makeup_df[1] == self.split]
+        self.non_df    = self.non_df[self.non_df[1] == self.split]
 
         # Extract file paths as Path objects
-        self.makeup_paths = [Path(p) for p in self.makeup_df['path'].tolist()]
-        self.non_paths    = [Path(p) for p in self.non_df['path'].tolist()]
+        self.makeup_paths = [Path(p) for p in self.makeup_df[0].tolist()]
+        self.non_paths    = [Path(p) for p in self.non_df[0].tolist()]
 
-        # Optional limit
         if max_samples:
             self.makeup_paths = self.makeup_paths[:max_samples]
             self.non_paths    = self.non_paths[:max_samples]

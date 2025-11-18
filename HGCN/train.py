@@ -16,7 +16,7 @@ from models import MakeupGCN
 device = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {device}")
 
-NUM_EPOCHS = 50
+NUM_EPOCHS = 100
 LEARNING_RATE = 0.0008
 
 print("importing makeup gcn model..")
@@ -25,8 +25,8 @@ model = model.to(device)
 print(f"GCN Model: {sum(p.numel() for p in model.parameters()):,} parameters")
 
 print("importing the dataset..")
-MAKEUP_DIR = "/content/mt_dataset/all/images/makeupcsv"
-NON_MAKEUP_DIR = "/content/mt_dataset/all/images/non-makeupcsv"
+MAKEUP_DIR = "/home/DSE411/Documents/mlg/project/makeup_dataset/all/cache/make_split.csv"
+NON_MAKEUP_DIR = "/home/DSE411/Documents/mlg/project/makeup_dataset/all/cache/non_split.csv"
 
 dataset = MakeupDataset(
     makeup_csv=MAKEUP_DIR,
@@ -45,6 +45,7 @@ train_losses = []
 best_loss = float('inf')
 
 print("starting training...")
+print("number of epochs:", NUM_EPOCHS)
 for epoch in range(NUM_EPOCHS):
     model.train()
     epoch_loss = 0
@@ -78,4 +79,4 @@ for epoch in range(NUM_EPOCHS):
         torch.save(model.state_dict(), 'makeup_gcn_best.pth')
         print("Best model saved")
 
-print("\nGCN training complete!")
+print("\nGCN training complete")
