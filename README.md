@@ -4,4 +4,5 @@
 
 ## HGCN (Histogram guided Makeup Transfer using GCN)
 
-## GAT-NetGS
+## XFlow-GAT
+Cross-Face Flow via GAT
