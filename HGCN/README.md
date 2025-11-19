@@ -1,4 +1,7 @@
-# graphglow
-Graph based makeup transfer network
+## HGCN (Histogram guided Makeup Transfer using GCN)
 
-datasetpath = r"E:\datasets\MT\all\images"
+### 1. features.py
+
+### 2. data.py
+
+### 3. graph_creation.py

@@ -5,14 +5,6 @@ from features import build_features, extract_color_features
 import torch
 from torch_geometric.data import Data
 import pandas as pd
-import cv2
-import torch
-from torch_geometric.data import Data
-from pathlib import Path
-
-from graphs_creation import extract_landmarks, build_graph
-from features import build_features, extract_color_features
-
 
 class MakeupDataset:
     def __init__(self,
@@ -50,10 +42,11 @@ class MakeupDataset:
         return min(len(self.makeup_paths), len(self.non_paths))
 
     def __getitem__(self, idx):
+        
         img_ref = cv2.imread(str(self.makeup_paths[idx]))
         img_src = cv2.imread(str(self.non_paths[idx]))
 
-        img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB)
+        img_ref = cv2.cvtColor(img_ref, cv2.COLOR_BGR2RGB) 
         img_src = cv2.cvtColor(img_src, cv2.COLOR_BGR2RGB)
 
         coords_ref, labels_ref = extract_landmarks(img_ref, self.device)
@@ -62,23 +55,23 @@ class MakeupDataset:
         if coords_ref is None or coords_src is None:
             return None
 
-        edge_index = build_graph(coords_src, labels_src, coords_ref, labels_ref, k=6)
+        edge_index = build_graph(coords_src, labels_src, coords_ref, labels_ref, k=6) # intra (2) + inter (1)
 
-        x_src = build_features(img_src, coords_src)
+        x_src = build_features(img_src, coords_src) # nodes embeddings 
         x_ref = build_features(img_ref, coords_ref)
         x_all = torch.cat([x_src, x_ref], dim=0)
 
-        # Build target colors from ref landmarks
+        # Build target colors from ref landmarks (gT colors)
         target_colors = []
         for lm in coords_ref.cpu().numpy():
-            feat = extract_color_features(img_ref, lm)[:3]
+            feat = extract_color_features(img_ref, lm)[:3] # 9 dim feature vectors
             target_colors.append(feat)
         target_colors = torch.stack(target_colors, dim=0)
 
-        data = Data(
-            x=x_all.to(self.device),
-            edge_index=edge_index.to(self.device),
-            y=target_colors.to(self.device),
+        data = Data(    
+            x=x_all.to(self.device),   # nodes features
+            edge_index=edge_index.to(self.device),  #
+            y=target_colors.to(self.device),  # gt labels 
             coords_src=coords_src,
             labels_src=labels_src,
             img_src=img_src,
