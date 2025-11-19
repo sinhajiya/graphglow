@@ -12,6 +12,16 @@
 
 ### 2. data.py
 
+
 ### 3. graph_creation.py 
+-extract_landmarks
+
+-knn_edges
+
+-build_graph
+
+-
+
+
 
 ### 4. 
