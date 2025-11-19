@@ -7,40 +7,38 @@ from graphs_creation import extract_landmarks, build_graph
 from features import extract_region_mask, build_features
 import cv2
 from skimage import color, exposure
-from landmarks import FACE_REGIONS, ROI_LABELS
 import cv2
 import numpy as np
 from scipy.spatial import ConvexHull
 from skimage import color, exposure
 from scipy.interpolate import griddata
+from landmarks import ROI_LABELS
+
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
+# take in image -> predict lab color output 
 class MakeupGCN(nn.Module):
-    """
-    Graph Convolutional Network for makeup transfer.
-    for each region (lips, left_eye, right_eye),  force the source color distribution to mimic the reference. 
-    """
+
     def __init__(self, device=device, in_channels=9, hidden_channels=128, num_layers=4):
         super(MakeupGCN, self).__init__()
 
         self.input_proj = nn.Sequential(
-            nn.Linear(in_channels, hidden_channels),
-            nn.BatchNorm1d(hidden_channels),
+            nn.Linear(in_channels, hidden_channels), # 9 -> 128
+            nn.BatchNorm1d(hidden_channels), # batch norm
             nn.ReLU(),
             nn.Dropout(0.2)
         )
 
-        self.gcn_layers = nn.ModuleList()
-        self.batch_norms = nn.ModuleList()
+        self.gcn_layers = nn.ModuleList()   # gcn layers init
+        self.batch_norms = nn.ModuleList()  
 
-        for i in range(num_layers):
-            if i == 0:
-                self.gcn_layers.append(GCNConv(hidden_channels, hidden_channels))
-            else:
-                self.gcn_layers.append(GCNConv(hidden_channels, hidden_channels))
+# 4 layers of gcn + batch norm
+        for _ in range(num_layers):
+            self.gcn_layers.append(GCNConv(hidden_channels, hidden_channels))
             self.batch_norms.append(nn.BatchNorm1d(hidden_channels))
 
+# linear layers for color pred
         self.output = nn.Sequential(
             nn.Linear(hidden_channels, hidden_channels // 2),
             nn.ReLU(),
@@ -51,15 +49,15 @@ class MakeupGCN(nn.Module):
     def forward(self, data):
         x, edge_index = data.x, data.edge_index
 
-        x = self.input_proj(x)
+        x = self.input_proj(x) # 9 -> 128
 
-        for gcn, bn in zip(self.gcn_layers, self.batch_norms):
+        for gcn, bn in zip(self.gcn_layers, self.batch_norms): # gcn + bn with res
             x_new = gcn(x, edge_index)
             x_new = bn(x_new)
             x_new = F.relu(x_new)
             x = x + x_new
 
-        lab_colors = self.output(x)
+        lab_colors = self.output(x)  # lab color output.
         return lab_colors
 
 
@@ -67,22 +65,21 @@ def post_processor(model, img_src, img_ref, device="cuda"):
     """
     graph-based post-processor
     """
-    model.eval()
 
+    model.eval()
     coords_src, labels_src = extract_landmarks(img_src, device)
     coords_ref, labels_ref = extract_landmarks(img_ref, device)
 
     if coords_src is None or coords_ref is None:
         return None
 
-    # STAGE 1: Histogram matching for each region
     result = img_src.copy()
     h, w = img_src.shape[:2]
 
     for _, region_label in ROI_LABELS.items():
-        # Get masks
-        src_mask, src_coords = extract_region_mask(img_src, coords_src, labels_src, region_label)
-        ref_mask, ref_coords = extract_region_mask(img_ref, coords_ref, labels_ref, region_label)
+        # Get masks for all labels
+        src_mask, _ = extract_region_mask(img_src, coords_src, labels_src, region_label)
+        ref_mask, _ = extract_region_mask(img_ref, coords_ref, labels_ref, region_label)
 
         if src_mask is None or ref_mask is None:
             continue
@@ -98,7 +95,6 @@ def post_processor(model, img_src, img_ref, device="cuda"):
         if len(src_pixels) == 0 or len(ref_pixels) == 0:
             continue
 
-        # HISTOGRAM MATCHING - Guaranteed color transfer!
         matched_pixels = np.zeros_like(src_pixels)
         for ch in range(3):
             matched_pixels[:, ch] = exposure.match_histograms(
@@ -106,23 +102,20 @@ def post_processor(model, img_src, img_ref, device="cuda"):
                 ref_pixels[:, ch]
             )
 
-        # Expand and blur mask
         kernel = np.ones((9, 9), np.uint8)
         expanded_mask = cv2.dilate(src_mask, kernel, iterations=2)
         smooth_mask = cv2.GaussianBlur(expanded_mask.astype(np.float32), (25, 25), 10)
         smooth_mask = smooth_mask[:, :, np.newaxis]
 
-        # Apply histogram-matched colors
         temp_result = result.copy().astype(np.float32)
         temp_result[src_mask > 0] = matched_pixels
 
-        # Blend: 90% matched color
         result = (smooth_mask * 0.9 * temp_result + (1 - smooth_mask * 0.9) * result).astype(np.uint8)
 
-    # STAGE 2: GCN refinement for spatial smoothness
+
     edge_index = build_graph(coords_src, labels_src, coords_ref, labels_ref, k=6)
 
-    x_src = build_features(result, coords_src)  # Features from histogram-matched result
+    x_src = build_features(result, coords_src) 
     x_ref = build_features(img_ref, coords_ref)
     x_all = torch.cat([x_src, x_ref], dim=0)
 
