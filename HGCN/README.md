@@ -1,6 +1,8 @@
 ## HGCN (Histogram guided Makeup Transfer using GCN)
 
 ### 1. features.py
+-histogram_match_region
+
 -extract_region_mask
 
 -extract_color_features
