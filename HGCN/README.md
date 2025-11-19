@@ -11,7 +11,27 @@
 
 
 ### 2. data.py
+-loads makeup/non-makeup paths
+
+-extract facial landmarks coordinates
+
+-constructs graph node features
+
 
 ### 3. graph_creation.py 
+-extract_landmarks
 
-### 4. 
+-knn_edges
+
+-build_graph
+
+-
+
+
+
+### 4. models.py
+-GCN based makeup refinement
+
+-landmark graph construction
+
+-Smooth LAB blending
