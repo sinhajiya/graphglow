@@ -24,4 +24,7 @@
 
 
 
-### 4. 
+### 4. models.py
+-GCN based makeup refinement
+-landmark graph construction
+
