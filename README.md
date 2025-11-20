@@ -1,4 +1,4 @@
-# Makeup Transfer Using Graphs
+=# Makeup Transfer Using Graphs
 
 **Members:** [Jiya Sinha](https://github.com/sinhajiya), [Rashi Bharti](https://github.com/rashibharti28), [Sakshi Tiwari](https://github.com/Sakshi-Tiwari2003), [Nandhana KS](https://github.com/nandhanaks)
 
@@ -6,9 +6,9 @@
 
 
 
-Misc folder: XGAT-Color
+Misc folder: XFlow-GAT
 
-XGAT-Color was the first architecture we experimented with. The model followed a multi-stage pipeline:
+ XFlow-GAT was the first architecture we experimented with. The model followed a multi-stage pipeline:
 
 node features → graph message passing → updated node features → rasterization → U-Net → image.
 
