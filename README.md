@@ -16,7 +16,7 @@ This repo contains code for out Region-Aware Makeup Transfer using GCNs.
 ## Evaluation through user review:
 Mean score: 4.9/10
 
-Mean score of images by 52 users:
+Mean score of images by 54 users:
 <img width="1200" height="742" alt="image" src="https://github.com/user-attachments/assets/742ed75a-c603-41e8-ba52-d383b145a077" />
 
 
