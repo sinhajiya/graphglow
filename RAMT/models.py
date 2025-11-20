@@ -131,7 +131,7 @@ def post_processor(model, img_src, img_ref, device="cuda"):
     data = Data(x=x_all.to(device), edge_index=edge_index.to(device))
 
     with torch.no_grad():
-        gcn_refined_lab = model(data). # apply the makeup gcn to apply the makeup -> not sending the whole face in the gcn-> only the regions
+        gcn_refined_lab = model(data)# apply the makeup gcn to apply the makeup -> not sending the whole face in the gcn-> only the regions
 
     result_lab = color.rgb2lab(result)
     coords_src_px = coords_src.cpu().numpy()
